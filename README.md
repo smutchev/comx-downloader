@@ -1,5 +1,6 @@
 Python скрипт для скачивания манги в крупном размере одной командой с сайта com-x.life
 Скрипт автоматически распаковывает .cbr архивы с сайта и удобно раскидывает все главы по папкам.
+
 Тут содержится вайбкодинг, don't blame me :D
 
 **ВАЖНО!** Для работы скрипта необходимо войти в свой аккаунт com-x.life (Это делается единожды и куки сохраняются в специальный файл)
@@ -14,6 +15,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 * Windows
+(можете не использовать venv, на ваше усмотрение)
 ```bash
 git clone https://github.com/smutchev/comx-downloader.git
 cd comx-downloader
