@@ -3,7 +3,6 @@ beautifulsoup4
 lxml
 selenium
 webdriver-manager
-rarfile
 inquirer
 img2pdf
 Pillow

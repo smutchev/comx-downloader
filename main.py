@@ -6,7 +6,6 @@ import re
 import cloudscraper
 import requests.cookies
 import zipfile
-import rarfile
 import inquirer
 import img2pdf
 import shutil
@@ -21,7 +20,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from webdriver_manager.firefox import GeckoDriverManager
-from urllib.parse import urljoin, urlparse, quote
+from urllib.parse import urljoin, quote
 
 # --- Цвета и Стили ---
 CYAN = '\033[96m'
@@ -46,7 +45,7 @@ def clear_console():
 
 def print_menu():
     title = f"{MAGENTA_BG}{BLACK_FG}{BOLD} COM-X.LIFE Downloader{ENDC}"
-    author = f"{BOLD}Автор: https://github.com/smutchev{ENDC}"
+    author = f"{BOLD}Fork: https://github.com/Forsash3451k/comx-downloader{ENDC}"
     print(f"\n{title}  {author}\n")
 
 class ComXLifeDownloader:
@@ -253,139 +252,153 @@ class ComXLifeDownloader:
 
         chapter_title_safe = self.sanitize_filename(chapter_name)
         chapter_folder = base_manga_folder / chapter_title_safe
+        completion_marker = chapter_folder / ".complete"
 
-        if chapter_folder.exists() and any(f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp'] for f in chapter_folder.iterdir()):
+        if completion_marker.exists():
             print(f"  ⊘ {chapter_title_safe} (пропущено)")
             return True
 
-        chapter_folder.mkdir(parents=True, exist_ok=True)
-        temp_archive_path = None
+        if chapter_folder.exists():
+            shutil.rmtree(chapter_folder, ignore_errors=True)
 
-        # ========================================================================
-        # === ИЗМЕНЕНИЕ (v5.9): Убран Spinner ===
-        # ========================================================================
+        chapter_folder.mkdir(parents=True, exist_ok=True)
+
         if self.debug:
             print(f"  🔗 Скачиваю: {chapter_title_safe}...")
         else:
             print(f"  🔗 Скачиваю: {chapter_title_safe}...", end="", flush=True)
 
         try:
-            api_url = f"{self.base_url}/engine/ajax/controller.php?mod=api&action=chapters/download"
-            payload = f"chapter_id={chapter_id}&news_id={news_id}"
-            api_headers = self.headers.copy()
-            api_headers.update({
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Referer": manga_url,
-                "X-Requested-With": "XMLHttpRequest",
-                "Origin": self.base_url
-            })
+            reader_url = f"{self.base_url}/reader/{news_id}/{chapter_id}"
+            resp = self.session.get(reader_url, headers=self.headers, timeout=30)
 
-            link_resp = self.session.post(api_url, headers=api_headers, data=payload)
-
-            if link_resp.status_code != 200:
+            if resp.status_code != 200:
                 time_taken_s = f"({time.time() - start_time:.2f} сек)"
+                msg = f"Ошибка страницы главы: {resp.status_code}"
                 if self.debug:
-                    print(f"  ✗ Ошибка API: {link_resp.status_code} для [#{chapter_posi}] {time_taken_s}")
+                    print(f"  ✗ {msg} {time_taken_s}")
                 else:
-                    print(f"\r  ✗ Ошибка API: {link_resp.status_code} для [#{chapter_posi}] {time_taken_s}")
+                    print(f"\r  ✗ {msg} {time_taken_s}")
                 return False
 
-            json_data = link_resp.json()
-            raw_url = json_data.get("data")
+            soup = BeautifulSoup(resp.content, 'lxml')
+            script_data = None
+            for script in soup.find_all('script'):
+                if script.string and 'window.__DATA__' in script.string:
+                    script_data = script.string
+                    break
 
-            if not raw_url:
-                time_taken_s = f"({time.time() - start_time:.2f} сек)"
-                if self.debug:
-                    print(f"  ✗ API не вернул ссылку для [#{chapter_posi}] (error: {json_data.get('error')}) {time_taken_s}")
-                else:
-                    print(f"\r  ✗ API не вернул ссылку для [#{chapter_posi}] (error: {json_data.get('error')}) {time_taken_s}")
-                return False
+            images = []
+            host = 'img.com-x.life'
+            host_ru = 'rus.com-x.life'
 
-            download_url = "https:" + raw_url.replace("\\/", "/")
-
-            # if self.debug:
-            #     print(f"  [DEBUG] API response: {json_data}")
-            #     print(f"  [DEBUG] Download URL: {download_url}")
-
-            parsed_url = urlparse(download_url)
-            ext = Path(parsed_url.path).suffix
-            if ext not in ['.zip', '.cbr']:
-                ext = '.cbr'
-            temp_archive_path = chapter_folder / f"__archive__{ext}"
-
-            download_headers = self.headers.copy()
-            download_headers['Referer'] = manga_url
-            archive_response = self.session.get(download_url, headers=download_headers, stream=True, timeout=60)
-
-            # if self.debug:
-            #     print(f"  [DEBUG] Request headers: {dict(archive_response.request.headers)}")
-            #     print(f"  [DEBUG] Response status: {archive_response.status_code}")
-            #     print(f"  [DEBUG] Response headers: {dict(archive_response.headers)}")
-            #     print(f"  [DEBUG] Session cookies: {dict(self.session.cookies)}")
-
-            if archive_response.status_code == 200:
-                with open(temp_archive_path, 'wb') as f:
-                    for chunk in archive_response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-
-                extracted = False
-                try:
-                    with zipfile.ZipFile(temp_archive_path, 'r') as zf:
-                        zf.extractall(chapter_folder)
-                    extracted = True
-                except (zipfile.BadZipFile, zipfile.LargeZipFile):
+            if script_data:
+                json_match = re.search(
+                    r'window\.__DATA__\s*=\s*({.+?});', script_data, re.DOTALL
+                )
+                if json_match:
                     try:
-                        with rarfile.RarFile(temp_archive_path, 'r') as rf:
-                            rf.extractall(chapter_folder)
-                        extracted = True
+                        data = json.loads(json_match.group(1))
+                        images = data.get('images', []) or []
+                        host = data.get('host', host) or host
+                        host_ru = data.get('host_ru', host_ru) or host_ru
                     except Exception:
-                        time_taken_s = f"({time.time() - start_time:.2f} сек)"
-                        if self.debug:
-                            print(f"  ✗ Ошибка распаковки: {chapter_title_safe} (не ZIP и не RAR) {time_taken_s}")
-                        else:
-                            print(f"\r  ✗ Ошибка распаковки: {chapter_title_safe} (не ZIP и не RAR) {time_taken_s}")
-                        return False
-                except Exception:
-                    time_taken_s = f"({time.time() - start_time:.2f} сек)"
-                    if self.debug:
-                        print(f"  ✗ Ошибка распаковки (ZIP): {chapter_title_safe} {time_taken_s}")
-                    else:
-                        print(f"\r  ✗ Ошибка распаковки (ZIP): {chapter_title_safe} {time_taken_s}")
-                    return False
-                finally:
-                    if temp_archive_path.exists():
-                        try:
-                            temp_archive_path.unlink()
-                        except Exception:
-                            pass
+                        pass
 
+            if not images:
+                img_tags = soup.select('.reader-view img.reader__item')
+                for img in img_tags:
+                    src = img.get('src') or img.get('data-src')
+                    if not src:
+                        continue
+                    m = re.search(r'/comix/(.+)$', src)
+                    if m:
+                        images.append(m.group(1))
+                if images:
+                    first_src = img_tags[0].get('src') or img_tags[0].get('data-src') or ''
+                    m_host = re.match(r'https://([^/]+)/', first_src)
+                    if m_host:
+                        host = m_host.group(1)
+
+            if not images:
                 time_taken_s = f"({time.time() - start_time:.2f} сек)"
-                # Перезаписываем строку "Скачиваю..."
+                msg = "Не найдено изображений в window.__DATA__"
                 if self.debug:
-                    print(f"  ✓ {chapter_title_safe} {time_taken_s}")
+                    print(f"  ✗ {msg} {time_taken_s}")
                 else:
-                    print(f"\r  ✓ {chapter_title_safe} {time_taken_s}{' ' * 20}")
-                return extracted
+                    print(f"\r  ✗ {msg} {time_taken_s}")
+                return False
+
+            total = len(images)
+            downloaded = 0
+            current_host = host
+
+            for idx, img_path in enumerate(images, 1):
+                if self.debug:
+                    print(f"    [{idx}/{total}] {img_path}")
+                else:
+                    progress = f"{idx}/{total}"
+                    print(f"\r  🔗 {chapter_title_safe} [{progress}]", end="", flush=True)
+
+                for try_host in dict.fromkeys((current_host, host, host_ru)):
+                    img_url = f"https://{try_host}/comix/{img_path}"
+                    try:
+                        img_resp = self.session.get(
+                            img_url,
+                            headers={**self.headers, 'Referer': reader_url},
+                            timeout=30,
+                        )
+                        content_type = img_resp.headers.get('Content-Type', '').split(';', 1)[0].strip().lower()
+                        if img_resp.status_code == 200 and content_type.startswith('image/'):
+                            ext = Path(img_path).suffix.lower() or '.jpg'
+                            filename = chapter_folder / f"{idx:03d}{ext}"
+                            with open(filename, 'wb') as f:
+                                f.write(img_resp.content)
+                            downloaded += 1
+                            current_host = try_host
+                            break
+                    except Exception:
+                        continue
+
+                time.sleep(0.05)
+
+            time_taken_s = f"({time.time() - start_time:.2f} сек)"
+            if downloaded == total:
+                completion_marker.write_text(str(total), encoding='utf-8')
+                if self.debug:
+                    print(f"  ✓ {chapter_title_safe} ({downloaded}/{total}) {time_taken_s}")
+                else:
+                    print(f"\r  ✓ {chapter_title_safe} ({downloaded}/{total}){' ' * 20} {time_taken_s}")
+                return True
             else:
-                time_taken_s = f"({time.time() - start_time:.2f} сек)"
+                msg = f"{downloaded}/{total} — неполная глава, папка удалена"
                 if self.debug:
-                    print(f"  ✗ Ошибка скачивания файла: {archive_response.status_code} {time_taken_s}")
+                    print(f"  ✗ {chapter_title_safe} ({msg}) {time_taken_s}")
                 else:
-                    print(f"\r  ✗ Ошибка скачивания файла: {archive_response.status_code} {time_taken_s}")
+                    print(f"\r  ✗ {chapter_title_safe} ({msg}){' ' * 20} {time_taken_s}")
+                try:
+                    shutil.rmtree(chapter_folder, ignore_errors=True)
+                except Exception:
+                    pass
                 return False
 
         except Exception as e:
             time_taken_s = f"({time.time() - start_time:.2f} сек)"
             if self.debug:
-                print(f"  ✗ Критическая ошибка: {chapter_title_safe} ({e}) {time_taken_s}")
+                print(f"  ✗ Ошибка: {chapter_title_safe} ({e}) {time_taken_s}")
             else:
-                print(f"\r  ✗ Критическая ошибка: {chapter_title_safe} ({e}) {time_taken_s}")
-            if temp_archive_path and temp_archive_path.exists():
-                try:
-                    temp_archive_path.unlink()
-                except Exception:
-                    pass
+                print(f"\r  ✗ Ошибка: {chapter_title_safe} ({e}){' ' * 20} {time_taken_s}")
+            try:
+                shutil.rmtree(chapter_folder, ignore_errors=True)
+            except Exception:
+                pass
             return False
+        except KeyboardInterrupt:
+            try:
+                shutil.rmtree(chapter_folder, ignore_errors=True)
+            except Exception:
+                pass
+            raise
 
     def download_manga(self, manga_url, output_dir="manga", start_chapter=None, end_chapter=None,
                         output_format=None, delete_sources=None, quiet=False):

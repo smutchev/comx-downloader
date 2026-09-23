@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📚 COM-X.LIFE Downloader
+# 📚 COM-X.LIFE Downloader (Fork)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.7+-blue.svg" alt="Python 3.7+">
@@ -8,19 +8,38 @@
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
 </p>
 
-**Мощный инструмент для скачивания манги с сайта com-x.life**
+**Форк оригинального проекта [smutchev/comx-downloader](https://github.com/smutchev/comx-downloader)**
 
-Автоматическое скачивание глав в высоком качестве • Поддержка пакетной загрузки • Удобный интерфейс
+Актуализирована логика скачивания после изменений на сайте com-x.life • Изображения берутся напрямую из `window.__DATA__` • Больше не нужен Selenium для скачивания
 
 [Установка](#-установка) • [Использование](#-использование) • [Возможности](#-возможности) • [FAQ](#-faq)
 
 </div>
 
+## ✅ Решение в этом форке
+
+**Скачивание изображений напрямую из читалки, минуя кнопку «Скачать».**
+
+Страница `/reader/{news_id}/{chapter_id}` содержит в `window.__DATA__` полный список изображений главы:
+
+```json
+{
+  "images": ["13818/381548/1699567100_0.76154200.jpg", "..."],
+  "host": "img.com-x.life",
+  "host_ru": "rus.com-x.life",
+  "pages": 7,
+  "chapter_id": 381548,
+  "news_id": 13818
+}
+```
+
 ---
 
 ## 📖 Описание
 
-Python-скрипт для автоматического скачивания манги с сайта **com-x.life**. Скрипт автоматически распаковывает архивы (.cbr/.zip) и организует главы в удобную структуру папок.
+Python-скрипт для автоматического скачивания манги с сайта **com-x.life**. Изображения скачиваются напрямую со страницы читалки и организуются в удобную структуру папок.
+
+**Главное отличие этого форка:** скачивание больше не зависит от кнопки «Скачать» — изображения берутся напрямую из данных страницы читалки (`window.__DATA__`). Это устойчиво к изменениям интерфейса и работает быстрее.
 
 ---
 
@@ -35,7 +54,7 @@ Python-скрипт для автоматического скачивания �
 ### Linux
 
 ```bash
-git clone https://github.com/smutchev/comx-downloader.git
+git clone https://github.com/Forsash3451k/comx-downloader.git
 cd comx-downloader
 python -m venv venv
 source venv/bin/activate
@@ -45,7 +64,7 @@ pip install -r requirements.txt
 ### Windows (можете не использовать venv на ваше усмотрение)
 
 ```bash
-git clone https://github.com/smutchev/comx-downloader.git
+git clone https://github.com/Forsash3451k/comx-downloader.git
 cd comx-downloader
 python -m venv venv
 venv\Scripts\activate.bat
@@ -98,7 +117,7 @@ python main.py
 | Функция | Описание |
 |---------|----------|
 | 🔍 **Поиск** | Быстрый поиск по названию с показом до 30 результатов |
-| 📥 **Загрузка** | Автоматическое скачивание и распаковка глав |
+| 📥 **Загрузка** | Скачивание изображений напрямую из данных читалки |
 | 📊 **Прогресс** | Показ статуса загрузки каждой главы в реальном времени |
 | 🎯 **Диапазоны** | Скачивание отдельных глав или диапазонов (например, 1-50) |
 | 💾 **Кэш** | Пропуск уже скачанных глав |
@@ -176,6 +195,18 @@ Manga/
 Нет, скрипт работает в терминале. GUI используется только на этапе первой авторизации на сайт.
 </details>
 
+<details>
+<summary><b>Ошибка: "API не вернул ссылку" / "Скачивание доступно через кнопку Скачать"</b></summary>
+
+Это ошибка **оригинального** скрипта. В этом форке она исправлена — скачивание идёт не через API, а через парсинг `window.__DATA__` из страницы читалки. Убедитесь, что используете код именно этого форка.
+</details>
+
+<details>
+<summary><b>Почему используется зеркало rus.com-x.life?</b></summary>
+
+Это официальное зеркало, которое сам сайт выбирает для пользователей из РФ (поле `host_ru` в `window.__DATA__`). Скрипт использует его как fallback: если `img.com-x.life` не отвечает, автоматически пробуется `rus.com-x.life`.
+</details>
+
 ---
 
 ## 🛠️ Технические детали
@@ -187,7 +218,8 @@ Manga/
 - `beautifulsoup4` — парсинг HTML
 - `inquirer` — интерактивное меню
 - `webdriver-manager` — автоматическая установка драйверов
-- `rarfile` — работа с RAR-архивами
+- `img2pdf` + `Pillow` — упаковка в PDF, конвертация WebP
+- `cloudscraper` — обход Cloudflare
 
 ---
 
@@ -201,6 +233,8 @@ Manga/
 
 Создано [smutchev](https://github.com/smutchev)
 
+Форк с фиксом [Forsash3451k](https://github.com/Forsash3451k)
+
 **Примечание:** Тут содержится вайбкодинг, don't blame me :D
 
 ---
@@ -211,6 +245,6 @@ Manga/
 
 <div align="center">
 
-**[⬆ Наверх](#-com-xlife-downloader)**
+**[⬆ Наверх](#-com-xlife-downloader-fork)**
 
 </div>
